@@ -17,31 +17,36 @@ jobs:
       - name: Extract Link and Download
         id: downloader
         run: |
-          # Searches issue body for any URL ending in .apworld
+          # 1. Extract the URL
           URL=$(echo "${{ github.event.issue.body }}" | grep -oP 'https?://[^\s)]+\.apworld' | head -n 1)
           
           if [ -z "$URL" ]; then
             echo "LINK_FOUND=false" >> $GITHUB_ENV
-            gh issue comment ${{ github.event.issue.number }} --body "⚠️ No .apworld link detected in the issue body. Please provide a direct download link."
+            gh issue comment ${{ github.event.issue.number }} --body "⚠️ No .apworld link detected."
             exit 0 
           else
             echo "LINK_FOUND=true" >> $GITHUB_ENV
+            
+            # 2. Create the directory (Use -p to ensure it exists)
             mkdir -p worlds/incoming
-            curl -L "$URL" -o worlds/incoming/test_subject.apworld
+            
+            # 3. Download the file INTO that directory
+            # We use -o with a specific name so we know exactly what it is
+            curl -L "$URL" -o worlds/incoming/world_to_test.apworld
+            
+            # 4. Output the FOLDER path (The actions usually want the directory containing the file)
             echo "world_path=worlds/incoming" >> $GITHUB_OUTPUT
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run Fuzzer
-        # Only runs if a link was actually found
         if: env.LINK_FOUND == 'true'
         uses: Eijebong/ap-actions/fuzz@main
         with:
-          apworld-path: ${{ steps.downloader.outputs.world_path }}
+          apworld-path: ${{ steps.downloader.outputs.world_path }} # This should point to the folder
           ap-version: 'latest'
           python-version: '3.12'
-          runs: 200
 
       - name: Run Unit Tests
         if: env.LINK_FOUND == 'true'
