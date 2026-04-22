@@ -17,7 +17,7 @@ jobs:
       - name: Extract Link and Download
         id: downloader
         run: |
-          # 1. Extract the URL
+          # Use grep to find the link
           URL=$(echo "${{ github.event.issue.body }}" | grep -oP 'https?://[^\s)]+\.apworld' | head -n 1)
           
           if [ -z "$URL" ]; then
@@ -27,15 +27,14 @@ jobs:
           else
             echo "LINK_FOUND=true" >> $GITHUB_ENV
             
-            # 2. Create the directory (Use -p to ensure it exists)
-            mkdir -p worlds/incoming
+            # Explicitly create the folder from the workspace root
+            mkdir -p ${{ github.workspace }}/worlds/incoming
             
-            # 3. Download the file INTO that directory
-            # We use -o with a specific name so we know exactly what it is
-            curl -L "$URL" -o worlds/incoming/world_to_test.apworld
+            # Download directly into that folder
+            curl -L "$URL" -o ${{ github.workspace }}/worlds/incoming/test.apworld
             
-            # 4. Output the FOLDER path (The actions usually want the directory containing the file)
-            echo "world_path=worlds/incoming" >> $GITHUB_OUTPUT
+            # Set the output to the absolute path of the FOLDER (not the file)
+            echo "world_path=${{ github.workspace }}/worlds/incoming" >> $GITHUB_OUTPUT
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
