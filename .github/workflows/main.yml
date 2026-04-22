@@ -1,0 +1,67 @@
+name: Automated APWorld Tester
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  process-apworld:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: write # Needed if the actions create temporary files
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Extract Link and Download
+        id: downloader
+        run: |
+          # Searches issue body for any URL ending in .apworld
+          URL=$(echo "${{ github.event.issue.body }}" | grep -oP 'https?://[^\s)]+\.apworld' | head -n 1)
+          
+          if [ -z "$URL" ]; then
+            echo "LINK_FOUND=false" >> $GITHUB_ENV
+            gh issue comment ${{ github.event.issue.number }} --body "⚠️ No .apworld link detected in the issue body. Please provide a direct download link."
+            exit 0 
+          else
+            echo "LINK_FOUND=true" >> $GITHUB_ENV
+            mkdir -p worlds/incoming
+            curl -L "$URL" -o worlds/incoming/test_subject.apworld
+            echo "world_path=worlds/incoming" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run Fuzzer
+        # Only runs if a link was actually found
+        if: env.LINK_FOUND == 'true'
+        uses: Eijebong/ap-actions/fuzz@main
+        with:
+          apworld-path: ${{ steps.downloader.outputs.world_path }}
+          ap-version: 'latest'
+          python-version: '3.12'
+          runs: 200
+
+      - name: Run Unit Tests
+        if: env.LINK_FOUND == 'true'
+        uses: Eijebong/ap-actions/ap-tests@main
+        with:
+          apworld-path: ${{ steps.downloader.outputs.world_path }}
+          ap-version: 'latest'
+          python-version: '3.12'
+
+      - name: Report Success and Close
+        if: env.LINK_FOUND == 'true' && success()
+        run: |
+          gh issue comment ${{ github.event.issue.number }} --body "✅ **Tests Passed!** The .apworld was successfully fuzzed and unit tested. Closing issue."
+          gh issue close ${{ github.event.issue.number }} --reason "completed"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Report Failure
+        if: env.LINK_FOUND == 'true' && failure()
+        run: |
+          gh issue comment ${{ github.event.issue.number }} --body "❌ **Test Failure.** The .apworld failed unit tests or fuzzer validation. Check the [Actions Log](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
